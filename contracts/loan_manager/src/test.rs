@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::{LoanManager, LoanManagerClient, LoanStatus};
 use remittance_nft::{RemittanceNFT, RemittanceNFTClient};
 use soroban_sdk::{testutils::{Address as _}, Address, Env};
@@ -23,7 +21,6 @@ fn setup_test<'a>(env: &Env) -> (LoanManagerClient<'a>, RemittanceNFTClient<'a>,
     // 4. Deploy the LoanManager contract
     let loan_manager_id = env.register(LoanManager, ());
     let loan_manager_client = LoanManagerClient::new(env, &loan_manager_id);
-    
     // 5. Initialize the Loan Manager with the NFT contract, lending pool, token, and admin
     loan_manager_client.initialize(&nft_contract_id, &pool_address, &token_id, &admin);
 
@@ -34,7 +31,6 @@ fn setup_test<'a>(env: &Env) -> (LoanManagerClient<'a>, RemittanceNFTClient<'a>,
 fn test_loan_request_success() {
     let env = Env::default();
     env.mock_all_auths();
-    
     let (manager, nft_client, _pool, _token, _token_admin) = setup_test(&env);
     let borrower = Address::generate(&env);
 
@@ -58,7 +54,6 @@ fn test_loan_request_success() {
 fn test_loan_request_failure_low_score() {
     let env = Env::default();
     env.mock_all_auths();
-    
     let (manager, nft_client, _pool, _token, _token_admin) = setup_test(&env);
     let borrower = Address::generate(&env);
 
@@ -110,7 +105,6 @@ fn test_approve_loan_flow() {
 fn test_repayment_flow() {
     let env = Env::default();
     env.mock_all_auths();
-    
     let (manager, nft_client, _pool, _token, _token_admin) = setup_test(&env);
     let borrower = Address::generate(&env);
 
@@ -152,10 +146,9 @@ fn test_small_repayment_does_not_change_score() {
 fn test_access_controls_unauthorized_repay() {
     let env = Env::default();
     // NOT using mock_all_auths() to enforce actual signatures
-    
     let (manager, _nft_client, _pool, _token, _token_admin) = setup_test(&env);
     let borrower = Address::generate(&env);
-    
+
     // Attempting to repay without proper Authorization scope should panic natively.
     manager.repay(&borrower, &500);
 }

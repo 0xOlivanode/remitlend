@@ -73,12 +73,11 @@ impl LoanManager {
         
         let nft_contract: Address = env.storage().instance().get(&DataKey::NftContract).expect("not initialized");
         let nft_client = NftClient::new(&env, &nft_contract);
-        
+
         let score = nft_client.get_score(&borrower);
         if score < 500 {
             panic!("score too low for loan");
         }
-        
         // Create loan record
         let mut loan_counter: u32 = env.storage().instance().get(&DataKey::LoanCounter).unwrap_or(0);
         loan_counter += 1;
@@ -123,7 +122,6 @@ impl LoanManager {
         let token: Address = env.storage().instance().get(&DataKey::Token).expect("token not set");
         let token_client = TokenClient::new(&env, &token);
         token_client.transfer(&lending_pool, &loan.borrower, &loan.amount);
-        
         events::loan_approved(&env, loan_id);
         env.events().publish((symbol_short!("LoanAppr"), loan.borrower.clone()), loan_id);
     }
@@ -138,16 +136,16 @@ impl LoanManager {
         if amount <= 0 {
             panic!("repayment amount must be positive");
         }
-        
+
         // Repayment logic (placeholder)
-        
+
         // Skip cross-contract call when repayment rounds to zero score points.
         if amount >= 100 {
             let nft_contract = Self::nft_contract(&env);
             let nft_client = NftClient::new(&env, &nft_contract);
             nft_client.update_score(&borrower, &amount, &None);
         }
-        
+
         events::loan_repaid(&env, borrower, amount);
     }
 }

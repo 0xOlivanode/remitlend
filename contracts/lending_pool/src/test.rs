@@ -1,14 +1,16 @@
-#![cfg(test)]
+extern crate std;
 
 use crate::{LendingPool, LendingPoolClient};
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, Env};
+use arbitrary::Arbitrary;
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::token::StellarAssetClient;
-use test_fuzz::test_fuzz;
-use arbitrary::Arbitrary;
+use soroban_sdk::{Address, Env};
 
-fn create_token_contract<'a>(env: &Env, admin: &Address) -> (Address, StellarAssetClient<'a>, TokenClient<'a>) {
+fn create_token_contract<'a>(
+    env: &Env,
+    admin: &Address,
+) -> (Address, StellarAssetClient<'a>, TokenClient<'a>) {
     let contract_id = env.register_stellar_asset_contract_v2(admin.clone());
     let stellar_asset_client = StellarAssetClient::new(env, &contract_id.address());
     let token_client = TokenClient::new(env, &contract_id.address());
@@ -27,7 +29,7 @@ fn test_deposit_flow() {
     // 2. Setup LendingPool
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
-    
+
     // 3. Initialize LendingPool with Token
     pool_client.initialize(&token_id);
 
@@ -42,7 +44,7 @@ fn test_deposit_flow() {
     // 6. Verify Balances
     assert_eq!(token_client.balance(&provider), 2000);
     assert_eq!(token_client.balance(&pool_id), 3000);
-    
+
     // 7. Verify internal ledger states
     assert_eq!(pool_client.get_deposit(&provider), 3000);
 }
@@ -54,7 +56,8 @@ fn test_negative_deposit_panic() {
     env.mock_all_auths();
 
     let token_admin = Address::generate(&env);
-    let (token_id, _stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
+    let (token_id, _stellar_asset_client, _token_client) =
+        create_token_contract(&env, &token_admin);
 
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
@@ -68,7 +71,7 @@ fn test_negative_deposit_panic() {
 #[should_panic]
 fn test_deposit_unauthorized() {
     let env = Env::default();
-    
+
     let token_admin = Address::generate(&env);
     let (token_id, stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
 
@@ -77,10 +80,10 @@ fn test_deposit_unauthorized() {
     pool_client.initialize(&token_id);
 
     let provider = Address::generate(&env);
-    
+
     env.mock_all_auths();
     stellar_asset_client.mint(&provider, &5000);
-    
+
     env.mock_auths(&[]); // Reset mocked auths enforcing require_auth() natively
 
     // Should fail missing native authorizations
@@ -127,7 +130,8 @@ fn test_negative_withdraw_panic() {
     env.mock_all_auths();
 
     let token_admin = Address::generate(&env);
-    let (token_id, _stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
+    let (token_id, _stellar_asset_client, _token_client) =
+        create_token_contract(&env, &token_admin);
 
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
@@ -164,7 +168,27 @@ struct FuzzOperation {
     withdraw_amount: i128,
 }
 
-#[test_fuzz]
+#[test]
+fn test_deposit_withdraw_invariants_manual() {
+    let operations = vec![
+        FuzzOperation {
+            deposit_amount: 1000,
+            withdraw_amount: 500,
+        },
+        FuzzOperation {
+            deposit_amount: 1000,
+            withdraw_amount: 1000,
+        },
+        FuzzOperation {
+            deposit_amount: 5000,
+            withdraw_amount: 1000,
+        },
+    ];
+    for operation in operations {
+        test_deposit_withdraw_invariants(operation);
+    }
+}
+
 fn test_deposit_withdraw_invariants(operation: FuzzOperation) {
     let env = Env::default();
     env.mock_all_auths();
@@ -176,7 +200,7 @@ fn test_deposit_withdraw_invariants(operation: FuzzOperation) {
 
     // Setup mock asset
     let token_admin = Address::generate(&env);
-    let (token_id, stellar_asset_client, token_client) = create_token_contract(&env, &token_admin);
+    let (token_id, stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
 
     // Setup LendingPool
     let pool_id = env.register(LendingPool, ());
@@ -190,20 +214,29 @@ fn test_deposit_withdraw_invariants(operation: FuzzOperation) {
 
     // Deposit
     pool_client.deposit(&provider, &operation.deposit_amount);
-    
+
     // Verify invariants after deposit
     let deposit_balance = pool_client.get_deposit(&provider);
-    assert!(deposit_balance >= 0, "Deposit balance should never be negative");
-    assert_eq!(deposit_balance, operation.deposit_amount, "Deposit balance should match deposit amount");
+    assert!(
+        deposit_balance >= 0,
+        "Deposit balance should never be negative"
+    );
+    assert_eq!(
+        deposit_balance, operation.deposit_amount,
+        "Deposit balance should match deposit amount"
+    );
 
     // Withdraw (only if sufficient balance)
     if operation.withdraw_amount <= operation.deposit_amount {
         pool_client.withdraw(&provider, &operation.withdraw_amount);
-        
+
         // Verify invariants after withdrawal
         let final_balance = pool_client.get_deposit(&provider);
         assert!(final_balance >= 0, "Final balance should never be negative");
-        assert_eq!(final_balance, operation.deposit_amount - operation.withdraw_amount, 
-                  "Final balance should equal deposit minus withdrawal");
+        assert_eq!(
+            final_balance,
+            operation.deposit_amount - operation.withdraw_amount,
+            "Final balance should equal deposit minus withdrawal"
+        );
     }
 }
